@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="MASK" />
-  <title>MASK v0.6 Offline — AIに渡す、その前に。</title>
+  <title>MASK v0.6.1 Offline — AIに渡す、その前に。</title>
   <meta name="description" content="スクショや文章から見せたくない情報を隠す、オフライン対応のローカル処理ツール。" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="style.css" />
@@ -18,7 +18,7 @@
       <div class="brand-row">
         <div class="brand-mark" aria-hidden="true">M</div>
         <div>
-          <p class="eyebrow">MASK v0.6 OFFLINE</p>
+          <p class="eyebrow">MASK v0.6.1 OFFLINE</p>
           <h1>AIに渡す、その前に。</h1>
         </div>
       </div>
@@ -102,7 +102,7 @@
         </div>
         <div class="ocr-card">
           <div class="ocr-card-main">
-            <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">通常OCRは1回で処理します。帳票・表モードでは罫線から表領域を検出し、罫線を除いたセル内容を追加OCRしてMarkdown表へ再構成します。電話・メール・郵便番号・URL等は画像側にも自動で黒塗りします。</p></div>
+            <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">通常OCRは1回で処理します。帳票・表モードでは斜めに撮影された帳票も台形補正して罫線を検出し、罫線を除いたセル内容を追加OCRしてMarkdown表へ再構成します。電話・メール・郵便番号・URL等は画像側にも自動で黒塗りします。</p></div>
             <div class="ocr-output-switch" role="group" aria-label="OCR出力形式">
               <button id="plainOcrModeBtn" class="ocr-output-btn is-active" type="button">通常OCR</button>
               <button id="layoutOcrModeBtn" class="ocr-output-btn" type="button">帳票・表</button>
@@ -156,7 +156,7 @@
       <div id="toast" class="toast" aria-live="polite"></div>
     </section>
 
-    <footer><span>MASK v0.6 Offline</span><span>Local-first masking tool</span></footer>
+    <footer><span>MASK v0.6.1 Offline</span><span>Local-first masking tool</span></footer>
   </main>
   <script src="app.js"></script>
 </body>
