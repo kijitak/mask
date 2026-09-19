@@ -1,0 +1,10 @@
+{
+  "name": "MASK — AIに渡す、その前に。",
+  "short_name": "MASK",
+  "description": "スクショや文章から見せたくない情報を隠す、オフライン対応ローカル処理ツール。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f7f5",
+  "theme_color": "#f7f7f5"
+}
