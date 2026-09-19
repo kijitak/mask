@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f7f5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="MASK" />
+  <title>MASK v0.2 Offline — AIに渡す、その前に。</title>
+  <meta name="description" content="スクショや文章から見せたくない情報を隠す、オフライン対応のローカル処理ツール。" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">M</div>
+        <div>
+          <p class="eyebrow">MASK v0.2 OFFLINE</p>
+          <h1>AIに渡す、その前に。</h1>
+        </div>
+      </div>
+      <p class="lead">スクショや文章から、見せたくない情報を隠して、そのまま共有・コピーできます。</p>
+      <div class="privacy-note" role="note">
+        <span aria-hidden="true">🔒</span>
+        <div>
+          <strong>処理はこの端末の中だけ。</strong>
+          <span>画像・文章はサーバーへ送信しません。OCRパックを一度保存すれば、機内モードでもOCRできます。</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="offline-panel" aria-labelledby="offlineTitle">
+      <div class="offline-head">
+        <div>
+          <p class="step">OFFLINE</p>
+          <h2 id="offlineTitle">オフライン準備</h2>
+        </div>
+        <div class="status-chips" aria-live="polite">
+          <span id="networkChip" class="status-chip">通信確認中</span>
+          <span id="offlineChip" class="status-chip">OCR確認中</span>
+        </div>
+      </div>
+      <p id="offlineMessage" class="muted">初回だけOCRパックをこのiPhoneへ保存します。</p>
+      <div class="offline-actions">
+        <button id="prepareOfflineBtn" class="btn btn-primary" type="button">オフライン準備をする</button>
+        <button id="installHelpBtn" class="btn btn-secondary" type="button">iPhoneへの入れ方</button>
+      </div>
+      <div id="offlineProgress" class="progress-wrap is-hidden" aria-live="polite">
+        <div class="progress-track"><span id="offlineProgressBar"></span></div>
+        <span id="offlineProgressText">準備しています…</span>
+      </div>
+      <div id="installGuide" class="install-guide is-hidden">
+        <strong>iPhoneではSafariで開いてください。</strong>
+        <ol>
+          <li>先に「オフライン準備をする」を完了</li>
+          <li>Safariの共有ボタンをタップ</li>
+          <li>「ホーム画面に追加」→「追加」</li>
+        </ol>
+        <span>ホーム画面から起動後は、機内モードでも利用できます。</span>
+      </div>
+    </section>
+
+    <section class="mode-switch" aria-label="入力方法">
+      <button class="mode-btn is-active" type="button" data-mode="image">画像から</button>
+      <button class="mode-btn" type="button" data-mode="text">文章から</button>
+    </section>
+
+    <section id="imageMode" class="panel stack-lg">
+      <div class="section-head"><div><p class="step">STEP 1</p><h2>スクショを読み込む</h2></div></div>
+      <label class="dropzone" for="imageInput">
+        <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        <span class="drop-icon" aria-hidden="true">＋</span>
+        <strong>画像を選択</strong>
+        <span>PNG / JPG / WebP</span>
+      </label>
+
+      <div id="imageWorkspace" class="workspace is-hidden">
+        <div class="canvas-wrap"><canvas id="imageCanvas" aria-label="画像プレビュー。ドラッグすると黒塗り矩形を追加できます。"></canvas></div>
+        <div class="tool-row">
+          <div class="tool-note">画像上をドラッグして黒塗りします。</div>
+          <div class="tool-actions">
+            <button id="undoMaskBtn" class="btn btn-secondary" type="button">1つ戻す</button>
+            <button id="clearMaskBtn" class="btn btn-ghost" type="button">全解除</button>
+          </div>
+        </div>
+        <div class="ocr-card">
+          <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">日本語＋英数字を端末上でOCRします。読み取り後は自由に修正できます。</p></div>
+          <button id="ocrBtn" class="btn btn-primary" type="button" disabled>OCRを実行</button>
+        </div>
+        <div id="ocrStatus" class="status-line" aria-live="polite">OCRを使うには、最初にオフライン準備を完了してください。</div>
+      </div>
+    </section>
+
+    <section id="textMode" class="panel stack-lg is-hidden">
+      <div class="section-head"><div><p class="step">STEP 1</p><h2>文章を貼り付ける</h2><p class="muted">AIやSNSへ出す前の文章をここに貼ってください。</p></div></div>
+    </section>
+
+    <section id="textSection" class="panel stack-lg">
+      <div class="section-head"><div><p class="step" id="maskStepLabel">STEP 3</p><h2>隠す情報を確認</h2><p class="muted">検出対象を選び、必要なら文章を直接編集してください。</p></div></div>
+      <label class="field-label" for="sourceText">元の文章</label>
+      <textarea id="sourceText" class="text-area" rows="9" placeholder="ここに文章を貼り付けるか、画像からOCRしてください。"></textarea>
+      <fieldset class="detect-grid">
+        <legend>自動検出する項目</legend>
+        <label><input type="checkbox" name="detect" value="email" checked /> メールアドレス</label>
+        <label><input type="checkbox" name="detect" value="phone" checked /> 電話番号</label>
+        <label><input type="checkbox" name="detect" value="postcode" checked /> 郵便番号</label>
+        <label><input type="checkbox" name="detect" value="url" checked /> URL</label>
+        <label><input type="checkbox" name="detect" value="number" checked /> 長い数字列</label>
+      </fieldset>
+      <div class="action-row">
+        <button id="maskBtn" class="btn btn-primary" type="button">個人情報をマスク</button>
+        <button id="restoreTextBtn" class="btn btn-secondary" type="button">元に戻す</button>
+      </div>
+      <div id="detectSummary" class="summary-card" aria-live="polite"><strong>まだマスクしていません。</strong><span>人名・住所・会社名などは自動判定しません。必要な箇所は手動で編集してください。</span></div>
+      <label class="field-label" for="maskedText">AI用テキスト</label>
+      <textarea id="maskedText" class="text-area result-area" rows="9" placeholder="マスク結果がここに表示されます。"></textarea>
+    </section>
+
+    <section class="panel output-panel">
+      <div class="section-head"><div><p class="step" id="outputStepLabel">STEP 4</p><h2>出力</h2><p class="muted">用途に合わせて、画像またはテキストを使えます。</p></div></div>
+      <div class="output-grid">
+        <button id="saveImageBtn" class="output-btn" type="button" disabled><span class="output-icon" aria-hidden="true">▣</span><span><strong>共有用画像を保存</strong><small>黒塗り済みPNG</small></span></button>
+        <button id="copyTextBtn" class="output-btn" type="button"><span class="output-icon" aria-hidden="true">Aa</span><span><strong>AI用テキストをコピー</strong><small>マスク済み文章</small></span></button>
+      </div>
+      <div id="toast" class="toast" aria-live="polite"></div>
+    </section>
+
+    <footer><span>MASK v0.2 Offline</span><span>Local-first masking tool</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
