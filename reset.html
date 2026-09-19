@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASK 更新</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;background:#f7f7f5;color:#171717;margin:0;padding:28px}
+main{max-width:520px;margin:0 auto}
+h1{font-size:28px;margin:0 0 12px}
+p{color:#666;line-height:1.7}
+.box{background:#fff;border:1px solid #ddd;border-radius:16px;padding:18px;margin-top:18px}
+</style>
+</head>
+<body>
+<main>
+<h1>MASKを更新しています</h1>
+<div class="box"><p id="status">旧バージョンのキャッシュを削除しています…</p></div>
+</main>
+<script>
+(async()=>{
+  const el=document.getElementById('status');
+  try{
+    const regs=await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map(r=>r.unregister()));
+    const keys=await caches.keys();
+    await Promise.all(keys.filter(k=>k.startsWith('mask-shell-')).map(k=>caches.delete(k)));
+    el.textContent='更新準備が完了しました。最新版へ移動します…';
+    setTimeout(()=>location.replace('./?updated='+Date.now()),800);
+  }catch(e){
+    el.textContent='更新処理に失敗しました。Safariを再読み込みしてもう一度お試しください。';
+  }
+})();
+</script>
+</body>
+</html>
