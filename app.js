@@ -413,13 +413,38 @@ function makeTableDetectionCanvas(){
   c.getContext('2d').drawImage(base,0,0,c.width,c.height);
   return c;
 }
+function linearFit(points){
+  if(!points.length)return{a:0,b:0};
+  const n=points.length;
+  const sx=points.reduce((s,p)=>s+p.x,0),sy=points.reduce((s,p)=>s+p.y,0);
+  const mx=sx/n,my=sy/n;
+  let num=0,den=0;
+  for(const p of points){num+=(p.x-mx)*(p.y-my);den+=(p.x-mx)*(p.x-mx)}
+  const a=den?num/den:0;
+  return{a,b:my-a*mx};
+}
+function robustLine(points){
+  let keep=[...points],fit=linearFit(keep);
+  for(let iter=0;iter<3&&keep.length>=4;iter++){
+    const residuals=keep.map(p=>Math.abs(p.y-(fit.a*p.x+fit.b))).sort((a,b)=>a-b);
+    const med=residuals[Math.floor(residuals.length/2)]||0;
+    const limit=Math.max(10,med*3);
+    const next=keep.filter(p=>Math.abs(p.y-(fit.a*p.x+fit.b))<=limit);
+    if(next.length<3||next.length===keep.length)break;
+    keep=next;fit=linearFit(keep);
+  }
+  return fit;
+}
+function canvasGray(c){
+  const x=c.getContext('2d',{willReadFrequently:true});
+  const d=x.getImageData(0,0,c.width,c.height).data,g=new Float32Array(c.width*c.height);
+  for(let i=0,j=0;i<d.length;i+=4,j++)g[j]=d[i]*.299+d[i+1]*.587+d[i+2]*.114;
+  return g;
+}
 function detectTableGrid(){
   if(!base)return null;
-  const c=makeTableDetectionCanvas(),w=c.width,h=c.height;
+  const c=makeTableDetectionCanvas(),w=c.width,h=c.height,gray=canvasGray(c);
   if(w<180||h<180)return null;
-  const raw=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data;
-  const gray=new Float32Array(w*h);
-  for(let i=0,j=0;i<raw.length;i+=4,j++)gray[j]=raw[i]*.299+raw[i+1]*.587+raw[i+2]*.114;
 
   const bands=[];
   for(let y=8;y<h-8;y++){
@@ -431,6 +456,7 @@ function detectTableGrid(){
     }
     const score=contrastHits/Math.max(1,samples);
     if(score<.12)continue;
+
     const xs=[];
     for(let x=0;x<w;x++){
       let dark=false;
@@ -462,10 +488,11 @@ function detectTableGrid(){
       if(p.score>prev.score)merged[merged.length-1]=p;
     }else merged.push(p);
   }
+
   const maxGap=Math.max(90,h*.10),seqs=[];
   let cur=[];
   for(const p of merged){
-    if(!cur){cur=[p];continue}
+    if(!cur.length){cur=[p];continue}
     const gap=p.y-cur[cur.length-1].y;
     if(gap>=12&&gap<=maxGap)cur.push(p);
     else{if(cur.length)seqs.push(cur);cur=[p]}
@@ -474,27 +501,50 @@ function detectTableGrid(){
   const seq=seqs.sort((a,b)=>b.length-a.length)[0];
   if(!seq||seq.length<4)return null;
 
-  const lows=seq.map(p=>p.lo).sort((a,b)=>a-b),highs=seq.map(p=>p.hi).sort((a,b)=>a-b);
-  let xStart=percentileSorted(lows,.5),xEnd=percentileSorted(highs,.5);
-  if(xEnd-xStart<w*.25)return null;
+  // The invoice can be photographed at an angle. Fit the left/right table edges,
+  // then horizontally rectify every row before trying to detect vertical rules.
+  const leftFit=robustLine(seq.map(p=>({x:p.y,y:p.lo})));
+  const rightCandidates=seq.filter(p=>p.span>=Math.max(.55,Math.max(...seq.map(q=>q.span))*.72));
+  const rightFit=robustLine((rightCandidates.length>=4?rightCandidates:seq).map(p=>({x:p.y,y:p.hi})));
   const yStart=seq[0].y,yEnd=seq[seq.length-1].y;
-  if(yEnd-yStart<h*.12)return null;
+  const detMid=(yStart+yEnd)/2;
+  const leftMid=leftFit.a*detMid+leftFit.b,rightMid=rightFit.a*detMid+rightFit.b;
+  if(rightMid-leftMid<w*.25)return null;
 
-  const scores=new Float32Array(w);
+  const baseScaleX=base.naturalWidth/w,baseScaleY=base.naturalHeight/h;
+  const outW=Math.round(clamp((rightMid-leftMid)*baseScaleX,650,1500));
+  const outH=Math.round(clamp((yEnd-yStart)*baseScaleY,260,1800));
+  const rectified=document.createElement('canvas');
+  rectified.width=outW;rectified.height=outH;
+  const rctx=rectified.getContext('2d');
+  rctx.fillStyle='#fff';rctx.fillRect(0,0,outW,outH);
+
+  for(let oy=0;oy<outH;oy++){
+    const ty=outH<=1?0:oy/(outH-1);
+    const syDet=yStart+(yEnd-yStart)*ty;
+    const lDet=leftFit.a*syDet+leftFit.b,rDet=rightFit.a*syDet+rightFit.b;
+    const sx=lDet*baseScaleX,sy=syDet*baseScaleY,sw=Math.max(2,(rDet-lDet)*baseScaleX);
+    rctx.drawImage(base,sx,sy,sw,Math.max(1.2,baseScaleY),0,oy,outW,1);
+  }
+
+  const rg=canvasGray(rectified),rw=rectified.width,rh=rectified.height;
+  const scores=new Float32Array(rw);
   let maxV=0;
-  for(let x=Math.max(8,xStart);x<=Math.min(w-9,xEnd);x++){
+  for(let x=8;x<rw-8;x++){
     let hits=0,total=0;
-    for(let y=yStart;y<=yEnd;y++){
-      const v=gray[y*w+x],near=(gray[y*w+x-7]+gray[y*w+x+7])*.5;
-      if(near-v>18)hits++;
+    for(let y=0;y<rh;y++){
+      const v=rg[y*rw+x],near=(rg[y*rw+x-6]+rg[y*rw+x+6])*.5;
+      if(near-v>16)hits++;
       total++;
     }
     scores[x]=hits/Math.max(1,total);
     if(scores[x]>maxV)maxV=scores[x];
   }
-  const threshold=Math.max(.12,maxV*.18),runs=[];
+  if(maxV<.12)return null;
+
+  const threshold=Math.max(.08,maxV*.22),runs=[];
   let run=[];
-  for(let x=xStart+1;x<xEnd;x++){
+  for(let x=8;x<rw-8;x++){
     if(scores[x]>threshold)run.push(x);
     else if(run.length){runs.push(run);run=[]}
   }
@@ -504,10 +554,9 @@ function detectTableGrid(){
     let peak=g[0];
     for(const x of g)if(scores[x]>scores[peak])peak=x;
     return{x:peak,score:scores[peak],width:g.length,prom:scores[peak]*Math.sqrt(g.length)};
-  }).filter(p=>p.x>xStart+20&&p.x<xEnd-20);
+  }).filter(p=>p.x>rw*.04&&p.x<rw*.96);
 
-  const mergedX=[];
-  const mergeDistance=Math.max(12,w*.02);
+  const mergeDistance=Math.max(14,rw*.018),mergedX=[];
   for(const p of internals.sort((a,b)=>a.x-b.x)){
     const prev=mergedX[mergedX.length-1];
     if(prev&&p.x-prev.x<mergeDistance){
@@ -518,19 +567,79 @@ function detectTableGrid(){
   if(internals.length>8){
     internals=[...internals].sort((a,b)=>b.prom-a.prom).slice(0,8).sort((a,b)=>a.x-b.x);
   }
-  const minCol=Math.max(22,w*.025),xLines=[xStart];
+
+  // Outer borders are now the rectified canvas edges. Internal vertical rules define columns.
+  const minCol=Math.max(28,rw*.035),xLines=[0];
   for(const p of internals){
-    if(p.x-xLines[xLines.length-1]>=minCol&&xEnd-p.x>=minCol)xLines.push(p.x);
+    if(p.x-xLines[xLines.length-1]>=minCol&&rw-1-p.x>=minCol)xLines.push(p.x);
   }
-  xLines.push(xEnd);
+  xLines.push(rw-1);
   if(xLines.length<3)return null;
 
-  const sx=base.naturalWidth/w,sy=base.naturalHeight/h;
+  const yLines=seq.map(p=>Math.round(((p.y-yStart)/Math.max(1,yEnd-yStart))*(rh-1)));
+  const cleanedY=[];
+  for(const y of yLines){
+    if(!cleanedY.length||y-cleanedY[cleanedY.length-1]>=8)cleanedY.push(y);
+  }
+  if(cleanedY.length<4)return null;
+
   return{
-    xLines:xLines.map(x=>Math.round(x*sx)),
-    yLines:seq.map(p=>Math.round(p.y*sy)),
-    detection:{width:w,height:h,rows:seq.length-1,cols:xLines.length-1}
+    sourceCanvas:rectified,
+    xLines,
+    yLines:cleanedY,
+    detection:{
+      rows:cleanedY.length-1,
+      cols:xLines.length-1,
+      perspective:true,
+      verticalPeaks:internals.length
+    }
   };
+}
+function buildCellSheet(grid){
+  const xs=grid.xLines,ys=grid.yLines,cols=xs.length-1,rows=ys.length-1,source=grid.sourceCanvas;
+  if(!source||cols<2||rows<2)return null;
+
+  const rowSizes=[];
+  for(let r=0;r<rows;r++)rowSizes.push(Math.max(1,ys[r+1]-ys[r]));
+  const medRow=median(rowSizes)||40;
+  let scale=clamp(82/medRow,1.35,2.35);
+  const rawWidth=xs[xs.length-1]-xs[0];
+  const gapX=18,gapY=14,pad=18;
+  const estimated=rawWidth*scale+(cols-1)*gapX+pad*2;
+  if(estimated>2700)scale*=2700/estimated;
+
+  const colWidths=[];
+  for(let c=0;c<cols;c++)colWidths.push(Math.max(24,Math.round((xs[c+1]-xs[c]-12)*scale)));
+  const rowHeights=[];
+  for(let r=0;r<rows;r++)rowHeights.push(Math.max(30,Math.round((ys[r+1]-ys[r]-8)*scale)));
+  const width=colWidths.reduce((a,b)=>a+b,0)+(cols-1)*gapX+pad*2;
+  const height=rowHeights.reduce((a,b)=>a+b,0)+(rows-1)*gapY+pad*2;
+  if(width<80||height<80||width*height>9500000)return null;
+
+  const sheet=document.createElement('canvas');sheet.width=width;sheet.height=height;
+  const sctx=sheet.getContext('2d');sctx.fillStyle='#fff';sctx.fillRect(0,0,width,height);
+  const cells=[];
+  let dy=pad;
+  for(let r=0;r<rows;r++){
+    let dx=pad;
+    for(let c=0;c<cols;c++){
+      const cellW=xs[c+1]-xs[c],cellH=ys[r+1]-ys[r];
+      const marginX=Math.min(10,Math.max(4,Math.round(cellW*.018)));
+      const marginY=Math.min(8,Math.max(3,Math.round(cellH*.10)));
+      const sx=xs[c]+marginX,sy=ys[r]+marginY;
+      const sw=Math.max(2,cellW-marginX*2),sh=Math.max(2,cellH-marginY*2);
+      const dw=colWidths[c],dh=rowHeights[r];
+      const tmp=document.createElement('canvas');tmp.width=dw;tmp.height=dh;
+      const tx=tmp.getContext('2d');tx.fillStyle='#fff';tx.fillRect(0,0,dw,dh);
+      tx.drawImage(source,sx,sy,sw,sh,0,0,dw,dh);
+      normalizeCellCanvas(tmp);
+      sctx.drawImage(tmp,dx,dy);
+      cells.push({row:r,col:c,x0:dx,y0:dy,x1:dx+dw,y1:dy+dh});
+      dx+=dw+gapX;
+    }
+    dy+=rowHeights[r]+gapY;
+  }
+  return{url:sheet.toDataURL('image/png'),cells,rows,cols,width,height};
 }
 function normalizeCellCanvas(c){
   const x=c.getContext('2d',{willReadFrequently:true}),im=x.getImageData(0,0,c.width,c.height),d=im.data;
