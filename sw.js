@@ -1,6 +1,6 @@
 'use strict';
 
-const SHELL_CACHE = 'mask-shell-v0.4.0';
+const SHELL_CACHE = 'mask-shell-v0.5.0';
 const OCR_CACHE = 'mask-ocr-v5.0.0-best';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest'
