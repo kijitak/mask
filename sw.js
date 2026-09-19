@@ -37,17 +37,30 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+
+  // OCR virtual files exist only in Cache Storage, so always prefer the cached copy.
+  if (url.pathname.includes('/offline/')) {
+    event.respondWith((async () => {
+      const cached = await caches.match(event.request, { ignoreSearch: true });
+      return cached || new Response('OCR asset unavailable', { status: 503 });
+    })());
+    return;
+  }
+
+  // For the app shell, prefer the network while online so a new release is not
+  // permanently hidden behind an older service-worker cache. Fall back to cache offline.
   event.respondWith((async () => {
-    const cached = await caches.match(event.request, { ignoreSearch: true });
-    if (cached) return cached;
     try {
-      const fresh = await fetch(event.request);
-      if (fresh && fresh.ok && new URL(event.request.url).origin === self.location.origin) {
+      const fresh = await fetch(event.request, { cache: 'no-store' });
+      if (fresh && fresh.ok && url.origin === self.location.origin) {
         const cache = await caches.open(SHELL_CACHE);
         cache.put(event.request, fresh.clone());
       }
       return fresh;
     } catch (_) {
+      const cached = await caches.match(event.request, { ignoreSearch: true });
+      if (cached) return cached;
       if (event.request.mode === 'navigate') {
         const fallback = await caches.match('./index.html');
         if (fallback) return fallback;
