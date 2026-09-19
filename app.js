@@ -42,9 +42,9 @@ function pt(ev){const r=e.cv.getBoundingClientRect();return{x:(ev.clientX-r.left
 function setZoom(v){
   zoom=Number(v)||100;
   e.cv.style.width=zoom+'%';
-  $('.zoom-btn').forEach(b=>b.classList.toggle('is-active',Number(b.dataset.zoom)===zoom));
+  $$('.zoom-btn').forEach(b=>b.classList.toggle('is-active',Number(b.dataset.zoom)===zoom));
 }
-$('.zoom-btn').forEach(b=>b.onclick=()=>setZoom(b.dataset.zoom));
+$$('.zoom-btn').forEach(b=>b.onclick=()=>setZoom(b.dataset.zoom));
 function setEditMode(m){
   editMode=m;
   e.drawMode.classList.toggle('is-active',m==='draw');
@@ -84,8 +84,10 @@ e.cv.onpointerdown=ev=>{
 e.cv.onpointermove=ev=>{
   if(editMode!=='draw'||!drag||!draft)return;
   const p=pt(ev);
-  draft.x=Math.min(draft.sx,p.x);draft.y=Math.min(draft.sy,p.y);
-  draft.w=Math.abs(p.x-draft.sx);draft.h=Math.abs(p.y-draft.sy);
+  draft.x=Math.min(draft.sx,p.x);
+  draft.y=Math.min(draft.sy,p.y);
+  draft.w=Math.abs(p.x-draft.sx);
+  draft.h=Math.abs(p.y-draft.sy);
   draw();
 };
 function end(ev){
@@ -101,13 +103,17 @@ function end(ev){
   drag=false;
   try{e.cv.releasePointerCapture(ev.pointerId)}catch{}
   if(draft.w>4&&draft.h>4)rects.push({id:maskSeq++,x:draft.x,y:draft.y,w:draft.w,h:draft.h,source:'manual',type:'manual'});
-  draft=null;draw();
+  draft=null;
+  draw();
 }
-e.cv.onpointerup=end;e.cv.onpointercancel=end;
+e.cv.onpointerup=end;
+e.cv.onpointercancel=end;
 e.deleteMask.onclick=()=>{
   if(!selectedId)return;
   rects=rects.filter(r=>r.id!==selectedId);
-  selectedId=null;e.deleteMask.disabled=true;draw();
+  selectedId=null;
+  e.deleteMask.disabled=true;
+  draw();
 };
 e.undo.onclick=()=>{
   if(!rects.length)return;
@@ -116,14 +122,135 @@ e.undo.onclick=()=>{
   draw();
 };
 e.clear.onclick=()=>{rects=[];selectedId=null;e.deleteMask.disabled=true;draw()};
-function selectedDetectTypes(){return $('input[name="detect"]:checked').map(i=>i.value)}
+function selectedDetectTypes(){return $$('input[name="detect"]:checked').map(i=>i.value)}
 function plainRegex(rule){
-  return new RegExp('^(?:'+rule.r.source+')
+  const flags=rule.r.flags.replace(/g/g,'').replace(/y/g,'');
+  return new RegExp('^(?:'+rule.r.source+')$',flags);
+}
+function looksSensitive(text,type){
+  const s=String(text||'').trim();
+  if(!s)return false;
+  const re1=plainRegex(rules[type]);
+  if(re1.test(s))return true;
+  const compact=s.replace(/\s+/g,'');
+  const re2=plainRegex(rules[type]);
+  return re2.test(compact);
+}
+function extractOcrWords(data){
+  if(Array.isArray(data&&data.words)&&data.words.length){
+    return data.words
+      .filter(w=>w&&w.bbox&&String(w.text||'').trim())
+      .map(w=>({text:w.text||'',bbox:w.bbox}));
+  }
+  const words=[];
+  const blocks=(data&&data.blocks)||[];
+  blocks.forEach((b,bi)=>{
+    (b.paragraphs||[]).forEach((p,pi)=>{
+      (p.lines||[]).forEach((l,li)=>{
+        (l.words||[]).forEach(w=>{
+          if(w&&w.bbox&&String(w.text||'').trim())words.push({text:w.text||'',bbox:w.bbox,lineKey:bi+'-'+pi+'-'+li});
+        });
+      });
+    });
+  });
+  if(words.length)return words;
+  if(typeof (data&&data.tsv)==='string'){
+    const rows=data.tsv.trim().split(/\r?\n/).slice(1);
+    for(const row of rows){
+      const c=row.split('\t');
+      if(c.length<12||c[0]!=='5')continue;
+      const left=+c[6],top=+c[7],ww=+c[8],hh=+c[9],text=c.slice(11).join('\t');
+      if(text.trim())words.push({text,bbox:{x0:left,y0:top,x1:left+ww,y1:top+hh},lineKey:[c[1],c[2],c[3],c[4]].join('-')});
+    }
+  }
+  return words;
+}
+function groupWordsIntoLines(words){
+  const sorted=[...words].sort((a,b)=>a.bbox.y0-b.bbox.y0||a.bbox.x0-b.bbox.x0);
+  const lines=[];
+  for(const w of sorted){
+    const cy=(w.bbox.y0+w.bbox.y1)/2;
+    const h=Math.max(1,w.bbox.y1-w.bbox.y0);
+    let best=null,bestDist=Infinity;
+    for(const line of lines){
+      const d=Math.abs(cy-line.cy);
+      if(d<Math.max(8,h*.7,line.h*.7)&&d<bestDist){best=line;bestDist=d}
+    }
+    if(!best){best={cy,h,items:[]};lines.push(best)}
+    best.items.push(w);
+    best.cy=(best.cy*(best.items.length-1)+cy)/best.items.length;
+    best.h=Math.max(best.h,h);
+  }
+  return lines.map(l=>l.items.sort((a,b)=>a.bbox.x0-b.bbox.x0));
+}
+function unionBbox(items){
+  return {
+    x0:Math.min(...items.map(w=>w.bbox.x0)),
+    y0:Math.min(...items.map(w=>w.bbox.y0)),
+    x1:Math.max(...items.map(w=>w.bbox.x1)),
+    y1:Math.max(...items.map(w=>w.bbox.y1))
+  };
+}
+function overlapRatio(a,b){
+  const x1=Math.max(a.x,b.x),y1=Math.max(a.y,b.y);
+  const x2=Math.min(a.x+a.w,b.x+b.w),y2=Math.min(a.y+a.h,b.y+b.h);
+  const inter=Math.max(0,x2-x1)*Math.max(0,y2-y1);
+  const minArea=Math.max(1,Math.min(a.w*a.h,b.w*b.h));
+  return inter/minArea;
+}
+function autoMaskRects(words,size){
+  if(!words.length||!size)return[];
+  const types=selectedDetectTypes();
+  const found=[];
+  for(const items of groupWordsIntoLines(words)){
+    for(let i=0;i<items.length;i++){
+      for(const type of types){
+        let match=null;
+        for(let n=1;n<=Math.min(6,items.length-i);n++){
+          const chunk=items.slice(i,i+n);
+          const spaced=chunk.map(x=>x.text).join(' ');
+          const compact=chunk.map(x=>x.text).join('');
+          if(looksSensitive(spaced,type)||looksSensitive(compact,type)){match=chunk;break}
+        }
+        if(match)found.push({type,b:unionBbox(match)});
+      }
+    }
+  }
+  const sx=e.cv.width/size.width,sy=e.cv.height/size.height;
+  const candidates=found.map(f=>{
+    const x=Math.max(0,f.b.x0*sx-4),y=Math.max(0,f.b.y0*sy-4);
+    const x2=Math.min(e.cv.width,f.b.x1*sx+4),y2=Math.min(e.cv.height,f.b.y1*sy+4);
+    return {id:maskSeq++,x,y,w:Math.max(1,x2-x),h:Math.max(1,y2-y),source:'auto',type:f.type};
+  }).sort((a,b)=>a.w*a.h-b.w*b.h);
+  const unique=[];
+  for(const r of candidates){
+    if(!unique.some(q=>q.type===r.type&&overlapRatio(q,r)>.65))unique.push(r);
+  }
+  return unique;
+}
+function refreshAutoMasks(){
+  if(!lastOcrWords.length||!lastOcrSize)return 0;
+  rects=rects.filter(r=>r.source!=='auto');
+  const autos=autoMaskRects(lastOcrWords,lastOcrSize);
+  rects.push(...autos);
+  if(selectedId&&!rects.some(r=>r.id===selectedId)){selectedId=null;e.deleteMask.disabled=true}
+  draw();
+  return autos.length;
+}
+function maskText(t){
+  const keys=selectedDetectTypes(),counts={};
+  for(const k of ['url','email','postcode','phone','number'])if(keys.includes(k)){
+    let n=0;
+    t=t.replace(rules[k].r,()=>{n++;return rules[k].l});
+    counts[k]=n;
+  }
+  return{t,counts};
+}
 e.mask.onclick=()=>{if(!e.src.value.trim())return toast('まず文章を入力してください。',true);snapshot=e.src.value;const x=maskText(e.src.value);e.out.value=x.t;const autoCount=refreshAutoMasks();const nm={email:'メール',phone:'電話番号',postcode:'郵便番号',url:'URL',number:'長い数字列'},parts=Object.entries(x.counts).filter(([,n])=>n).map(([k,n])=>`${nm[k]} ${n}件`),total=Object.values(x.counts).reduce((a,b)=>a+b,0);e.sum.innerHTML=total?`<strong>${total}件をマスクしました。</strong><span>${parts.join(' / ')}。画像側の自動マスク ${autoCount}件。人名・住所・会社名は必要に応じて手動編集してください。</span>`:'<strong>対象は見つかりませんでした。</strong><span>人名・住所・会社名などは手動で編集してください。</span>'};e.restore.onclick=()=>{if(!snapshot)return toast('戻せる元テキストがありません。',true);e.src.value=snapshot;e.out.value=''};
 e.copy.onclick=async()=>{const t=(e.out.value||e.src.value).trim();if(!t)return toast('コピーする文章がありません。',true);try{await navigator.clipboard.writeText(t);toast('✓ AI用テキストをコピーしました。')}catch{const x=e.out.value?e.out:e.src;x.focus();x.select();toast(document.execCommand('copy')?'✓ AI用テキストをコピーしました。':'コピーできませんでした。',true)}};
 function finalizeDraft(){
   if(draft&&draft.w>4&&draft.h>4){
-    rects.push({x:draft.x,y:draft.y,w:draft.w,h:draft.h});
+    rects.push({id:maskSeq++,x:draft.x,y:draft.y,w:draft.w,h:draft.h,source:'manual',type:'manual'});
     draft=null;drag=false;
   }
   draw(false,false);
@@ -185,153 +312,6 @@ e.sharePreview.onclick=async()=>{
   setTimeout(()=>URL.revokeObjectURL(u),1500);
 };
 function makeOcrImage(){if(!base)return{url:dataUrl,width:e.cv.width,height:e.cv.height};const maxSide=3200,scale=Math.min(1,maxSide/Math.max(base.naturalWidth,base.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(base.naturalWidth*scale));c.height=Math.max(1,Math.round(base.naturalHeight*scale));const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(base,0,0,c.width,c.height);const im=x.getImageData(0,0,c.width,c.height),d=im.data;let sum=0;for(let i=0;i<d.length;i+=4)sum+=(d[i]*.299+d[i+1]*.587+d[i+2]*.114);const mean=sum/(d.length/4),invert=mean<105;for(let i=0;i<d.length;i+=4){let v=d[i]*.299+d[i+1]*.587+d[i+2]*.114;if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*1.45+128));d[i]=d[i+1]=d[i+2]=v}x.putImageData(im,0,0);return{url:c.toDataURL('image/png'),width:c.width,height:c.height}}
-e.ocr.onclick=async()=>{if(!base||!dataUrl)return;if(!ready)return toast('先にオフライン準備を完了してください。',true);e.ocr.disabled=true;try{e.ocrSt.textContent='OCR用に画像を補正しています…';const input=makeOcrImage();const w=await getWorker(m=>{if(m?.status)e.ocrSt.textContent=`高精度OCR処理中… ${typeof m.progress==='number'?Math.round(m.progress*100)+'%':''}`});const r=await w.recognize(input.url,{}, {text:true,blocks:true,tsv:true}),t=r?.data?.text?.trim()||'',conf=Math.round(r?.data?.confidence||0);lastOcrWords=extractOcrWords(r?.data||{});lastOcrSize={width:input.width,height:input.height};e.src.value=t;snapshot=t;const autoCount=refreshAutoMasks();e.ocrSt.textContent=t?`✓ 読み取り完了（信頼度 ${conf}% / 自動マスク ${autoCount}件）`:'文字を検出できませんでした。'}catch(x){console.error(x);worker=null;e.ocrSt.textContent='OCRに失敗しました。オフライン準備をやり直してください。'}finally{e.ocr.disabled=!ready}};
-mode('image');setReady(false);initSW();
-,rule.r.flags.replace(/g/g,'').replace(/y/g,''));
-}
-function looksSensitive(text,type){
-  const s=String(text||'').trim();
-  if(!s)return false;
-  const re=plainRegex(rules[type]);
-  return re.test(s)||re.test(s.replace(/\s+/g,''));
-}
-function extractOcrWords(data){
-  if(Array.isArray(data?.words)&&data.words.length){
-    return data.words.map((w,i)=>({text:w.text||'',bbox:w.bbox,lineKey:w.line_num??w.line?.id??i}));
-  }
-  const words=[];
-  const walk=obj=>{
-    if(!obj)return;
-    if(Array.isArray(obj)){obj.forEach(walk);return}
-    if(obj.text&&obj.bbox&&typeof obj.bbox.x0==='number'&&!obj.words)words.push({text:obj.text,bbox:obj.bbox,lineKey:obj.line_num??obj.line?.id??0});
-    ['blocks','paragraphs','lines','words'].forEach(k=>{if(obj[k])walk(obj[k])});
-  };
-  walk(data?.blocks);
-  if(words.length)return words;
-  if(typeof data?.tsv==='string'){
-    const lines=data.tsv.trim().split(/\r?\n/).slice(1);
-    for(const row of lines){
-      const c=row.split('\t');
-      if(c.length<12||c[0]!=='5')continue;
-      const left=+c[6],top=+c[7],w=+c[8],h=+c[9],text=c.slice(11).join('\t');
-      if(text.trim())words.push({text,bbox:{x0:left,y0:top,x1:left+w,y1:top+h},lineKey:[c[1],c[2],c[3],c[4]].join('-')});
-    }
-  }
-  return words;
-}
-function unionBbox(items){
-  return {x0:Math.min(...items.map(w=>w.bbox.x0)),y0:Math.min(...items.map(w=>w.bbox.y0)),x1:Math.max(...items.map(w=>w.bbox.x1)),y1:Math.max(...items.map(w=>w.bbox.y1))};
-}
-function autoMaskRects(words,size){
-  if(!words.length||!size)return[];
-  const types=selectedDetectTypes(),groups=new Map();
-  words.filter(w=>w.bbox&&w.text?.trim()).forEach((w,i)=>{
-    const k=String(w.lineKey??i);
-    if(!groups.has(k))groups.set(k,[]);
-    groups.get(k).push(w);
-  });
-  const found=[];
-  for(const items0 of groups.values()){
-    const items=[...items0].sort((a,b)=>a.bbox.x0-b.bbox.x0);
-    for(let i=0;i<items.length;i++){
-      for(const type of types){
-        let matched=null;
-        for(let n=1;n<=Math.min(6,items.length-i);n++){
-          const chunk=items.slice(i,i+n);
-          const spaced=chunk.map(x=>x.text).join(' ');
-          const compact=chunk.map(x=>x.text).join('');
-          if(looksSensitive(spaced,type)||looksSensitive(compact,type)){matched=chunk;break}
-        }
-        if(matched){
-          const b=unionBbox(matched);
-          found.push({type,b});
-        }
-      }
-    }
-  }
-  const sx=e.cv.width/size.width,sy=e.cv.height/size.height;
-  const unique=[];
-  for(const f of found){
-    const r={id:maskSeq++,x:Math.max(0,f.b.x0*sx-3),y:Math.max(0,f.b.y0*sy-3),w:Math.min(e.cv.width,(f.b.x1-f.b.x0)*sx+6),h:Math.min(e.cv.height,(f.b.y1-f.b.y0)*sy+6),source:'auto',type:f.type};
-    const dup=unique.some(q=>q.type===r.type&&Math.abs(q.x-r.x)<8&&Math.abs(q.y-r.y)<8&&Math.abs(q.w-r.w)<16);
-    if(!dup)unique.push(r);
-  }
-  return unique;
-}
-function refreshAutoMasks(){
-  if(!lastOcrWords.length||!lastOcrSize)return 0;
-  rects=rects.filter(r=>r.source!=='auto');
-  const autos=autoMaskRects(lastOcrWords,lastOcrSize);
-  rects.push(...autos);
-  if(selectedId&&!rects.some(r=>r.id===selectedId)){selectedId=null;e.deleteMask.disabled=true}
-  draw();
-  return autos.length;
-}
-function maskText(t){const keys=selectedDetectTypes(),counts={};for(const k of ['url','email','postcode','phone','number'])if(keys.includes(k)){let n=0;t=t.replace(rules[k].r,()=>{n++;return rules[k].l});counts[k]=n}return{t,counts}}
-e.mask.onclick=()=>{if(!e.src.value.trim())return toast('まず文章を入力してください。',true);snapshot=e.src.value;const x=maskText(e.src.value);e.out.value=x.t;const nm={email:'メール',phone:'電話番号',postcode:'郵便番号',url:'URL',number:'長い数字列'},parts=Object.entries(x.counts).filter(([,n])=>n).map(([k,n])=>`${nm[k]} ${n}件`),total=Object.values(x.counts).reduce((a,b)=>a+b,0);e.sum.innerHTML=total?`<strong>${total}件をマスクしました。</strong><span>${parts.join(' / ')}。人名・住所・会社名は必要に応じて手動編集してください。</span>`:'<strong>対象は見つかりませんでした。</strong><span>人名・住所・会社名などは手動で編集してください。</span>'};e.restore.onclick=()=>{if(!snapshot)return toast('戻せる元テキストがありません。',true);e.src.value=snapshot;e.out.value=''};
-e.copy.onclick=async()=>{const t=(e.out.value||e.src.value).trim();if(!t)return toast('コピーする文章がありません。',true);try{await navigator.clipboard.writeText(t);toast('✓ AI用テキストをコピーしました。')}catch{const x=e.out.value?e.out:e.src;x.focus();x.select();toast(document.execCommand('copy')?'✓ AI用テキストをコピーしました。':'コピーできませんでした。',true)}};
-function finalizeDraft(){
-  if(draft&&draft.w>4&&draft.h>4){
-    rects.push({x:draft.x,y:draft.y,w:draft.w,h:draft.h});
-    draft=null;drag=false;
-  }
-  draw(false);
-}
-function canvasToBlob(canvas){
-  return new Promise(resolve=>{
-    try{
-      const url=canvas.toDataURL('image/png');
-      const parts=url.split(','),bin=atob(parts[1]),arr=new Uint8Array(bin.length);
-      for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-      resolve(new Blob([arr],{type:'image/png'}));
-    }catch(err){console.error(err);resolve(null)}
-  });
-}
-async function buildExportPreview(){
-  if(!base)return null;
-  finalizeDraft();
-
-  // Export exactly what is visible on the edit canvas.
-  // This avoids any coordinate mismatch between the preview and the saved file.
-  const out=document.createElement('canvas');
-  out.width=e.cv.width;
-  out.height=e.cv.height;
-  const ox=out.getContext('2d');
-  ox.drawImage(e.cv,0,0);
-
-  exportBlob=await canvasToBlob(out);
-  if(!exportBlob)return null;
-
-  const old=e.preview.dataset.url;
-  if(old)URL.revokeObjectURL(old);
-  const url=URL.createObjectURL(exportBlob);
-  e.preview.src=url;
-  e.preview.dataset.url=url;
-  e.previewWrap.classList.remove('is-hidden');
-  e.previewWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
-  return exportBlob;
-}
-e.save.onclick=async()=>{
-  const b=await buildExportPreview();
-  if(!b)return toast('画像の書き出しに失敗しました。',true);
-  toast('保存プレビューを作成しました。黒塗りを確認してください。');
-};
-e.sharePreview.onclick=async()=>{
-  if(!exportBlob)return toast('先に保存プレビューを作成してください。',true);
-  const f=new File([exportBlob],`mask-${new Date().toISOString().slice(0,10)}.png`,{type:'image/png'});
-  try{
-    if(navigator.canShare?.({files:[f]})&&navigator.share){
-      await navigator.share({files:[f],title:'MASK 黒塗り済み画像'});
-      return;
-    }
-  }catch(x){
-    if(x.name==='AbortError')return;
-    console.error(x);
-  }
-  const u=URL.createObjectURL(exportBlob),a=document.createElement('a');
-  a.href=u;a.download=f.name;document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(u),1500);
-};
-function makeOcrImage(){if(!base)return dataUrl;const maxSide=3200,scale=Math.min(1,maxSide/Math.max(base.naturalWidth,base.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(base.naturalWidth*scale));c.height=Math.max(1,Math.round(base.naturalHeight*scale));const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(base,0,0,c.width,c.height);const im=x.getImageData(0,0,c.width,c.height),d=im.data;let sum=0;for(let i=0;i<d.length;i+=4)sum+=(d[i]*.299+d[i+1]*.587+d[i+2]*.114);const mean=sum/(d.length/4),invert=mean<105;for(let i=0;i<d.length;i+=4){let v=d[i]*.299+d[i+1]*.587+d[i+2]*.114;if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*1.45+128));d[i]=d[i+1]=d[i+2]=v}x.putImageData(im,0,0);return c.toDataURL('image/png')}
-e.ocr.onclick=async()=>{if(!base||!dataUrl)return;if(!ready)return toast('先にオフライン準備を完了してください。',true);e.ocr.disabled=true;try{e.ocrSt.textContent='OCR用に画像を補正しています…';const input=makeOcrImage();const w=await getWorker(m=>{if(m?.status)e.ocrSt.textContent=`高精度OCR処理中… ${typeof m.progress==='number'?Math.round(m.progress*100)+'%':''}`});const r=await w.recognize(input),t=r?.data?.text?.trim()||'',conf=Math.round(r?.data?.confidence||0);e.src.value=t;snapshot=t;e.ocrSt.textContent=t?`✓ 文字を読み取りました（認識信頼度 ${conf}%）`:'文字を検出できませんでした。'}catch(x){console.error(x);worker=null;e.ocrSt.textContent='OCRに失敗しました。オフライン準備をやり直してください。'}finally{e.ocr.disabled=!ready}};
+e.ocr.onclick=async()=>{if(!base||!dataUrl)return;if(!ready)return toast('先にオフライン準備を完了してください。',true);e.ocr.disabled=true;try{e.ocrSt.textContent='OCR用に画像を補正しています…';const input=makeOcrImage();const w=await getWorker(m=>{if(m?.status)e.ocrSt.textContent='高精度OCR処理中… '+(typeof m.progress==='number'?Math.round(m.progress*100)+'%':'')});const r=await w.recognize(input.url,{}, {text:true,blocks:true,tsv:true}),t=r?.data?.text?.trim()||'',conf=Math.round(r?.data?.confidence||0);lastOcrWords=extractOcrWords(r?.data||{});lastOcrSize={width:input.width,height:input.height};e.src.value=t;snapshot=t;const autoCount=refreshAutoMasks();e.ocrSt.textContent=t?'✓ 読み取り完了（信頼度 '+conf+'% / 自動マスク '+autoCount+'件）':'文字を検出できませんでした。'}catch(x){console.error(x);worker=null;e.ocrSt.textContent='OCRに失敗しました。オフライン準備をやり直してください。'}finally{e.ocr.disabled=!ready}};
+$$('input[name="detect"]').forEach(i=>i.addEventListener('change',()=>{if(lastOcrWords.length)refreshAutoMasks()}));
 mode('image');setReady(false);initSW();
