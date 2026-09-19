@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="MASK" />
-  <title>MASK v0.2 Offline — AIに渡す、その前に。</title>
+  <title>MASK v0.3 Offline — AIに渡す、その前に。</title>
   <meta name="description" content="スクショや文章から見せたくない情報を隠す、オフライン対応のローカル処理ツール。" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="style.css" />
@@ -18,7 +18,7 @@
       <div class="brand-row">
         <div class="brand-mark" aria-hidden="true">M</div>
         <div>
-          <p class="eyebrow">MASK v0.2 OFFLINE</p>
+          <p class="eyebrow">MASK v0.3 OFFLINE</p>
           <h1>AIに渡す、その前に。</h1>
         </div>
       </div>
@@ -87,7 +87,7 @@
           </div>
         </div>
         <div class="ocr-card">
-          <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">日本語＋英数字を端末上でOCRします。読み取り後は自由に修正できます。</p></div>
+          <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">日本語＋英数字を高精度モデルで端末上OCRします。読み取り後は自由に修正できます。</p></div>
           <button id="ocrBtn" class="btn btn-primary" type="button" disabled>OCRを実行</button>
         </div>
         <div id="ocrStatus" class="status-line" aria-live="polite">OCRを使うには、最初にオフライン準備を完了してください。</div>
@@ -128,7 +128,7 @@
       <div id="toast" class="toast" aria-live="polite"></div>
     </section>
 
-    <footer><span>MASK v0.2 Offline</span><span>Local-first masking tool</span></footer>
+    <footer><span>MASK v0.3 Offline</span><span>Local-first masking tool</span></footer>
   </main>
   <script src="app.js"></script>
 </body>
