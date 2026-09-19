@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id), $$=s=>[...document.querySelectorAll(s)];
-const e={imgIn:$('imageInput'),ws:$('imageWorkspace'),cv:$('imageCanvas'),ocr:$('ocrBtn'),ocrSt:$('ocrStatus'),src:$('sourceText'),out:$('maskedText'),mask:$('maskBtn'),restore:$('restoreTextBtn'),sum:$('detectSummary'),save:$('saveImageBtn'),copy:$('copyTextBtn'),toast:$('toast'),prep:$('prepareOfflineBtn'),help:$('installHelpBtn'),guide:$('installGuide'),net:$('networkChip'),off:$('offlineChip'),msg:$('offlineMessage'),prog:$('offlineProgress'),bar:$('offlineProgressBar'),progTxt:$('offlineProgressText'),imgMode:$('imageMode'),txtMode:$('textMode'),maskStep:$('maskStepLabel'),outStep:$('outputStepLabel'),undo:$('undoMaskBtn'),clear:$('clearMaskBtn')};
-const ctx=e.cv.getContext('2d'); let base=null,dataUrl='',rects=[],draft=null,drag=false,snapshot='',ready=false,worker=null,reg=null,loadPromise=null;
+const e={imgIn:$('imageInput'),ws:$('imageWorkspace'),cv:$('imageCanvas'),ocr:$('ocrBtn'),ocrSt:$('ocrStatus'),src:$('sourceText'),out:$('maskedText'),mask:$('maskBtn'),restore:$('restoreTextBtn'),sum:$('detectSummary'),save:$('saveImageBtn'),copy:$('copyTextBtn'),toast:$('toast'),prep:$('prepareOfflineBtn'),help:$('installHelpBtn'),guide:$('installGuide'),net:$('networkChip'),off:$('offlineChip'),msg:$('offlineMessage'),prog:$('offlineProgress'),bar:$('offlineProgressBar'),progTxt:$('offlineProgressText'),imgMode:$('imageMode'),txtMode:$('textMode'),maskStep:$('maskStepLabel'),outStep:$('outputStepLabel'),undo:$('undoMaskBtn'),clear:$('clearMaskBtn'),previewWrap:$('exportPreviewWrap'),preview:$('exportPreview'),sharePreview:$('sharePreviewBtn')};
+const ctx=e.cv.getContext('2d'); let base=null,dataUrl='',rects=[],draft=null,drag=false,snapshot='',ready=false,worker=null,reg=null,loadPromise=null,exportBlob=null;
 const rules={email:{l:'[EMAIL]',r:/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi},phone:{l:'[PHONE]',r:/(?<!\d)(?:\+81[-\s]?)?(?:0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4})(?!\d)/g},postcode:{l:'[POSTCODE]',r:/(?<!\d)(?:〒\s*)?(?:\d{3}[-ー－]\d{4}|\d{7})(?!\d|[-ー－]\d)/g},url:{l:'[URL]',r:/\bhttps?:\/\/[^\s<>"']+/gi},number:{l:'[NUMBER]',r:/(?<!\d)(?:\d[\s-]?){8,}\d(?!\d)/g}};
 function toast(t,err=false){e.toast.textContent=t;e.toast.style.color=err?'#8f3434':'#335f4a';clearTimeout(toast.t);toast.t=setTimeout(()=>e.toast.textContent='',3000)}
 function network(){const on=navigator.onLine;e.net.textContent=on?'ONLINE':'OFFLINE';e.net.classList.toggle('is-ready',on);e.net.classList.toggle('is-offline',!on)} addEventListener('online',network);addEventListener('offline',network);network();
@@ -20,8 +20,68 @@ e.cv.onpointerdown=ev=>{if(!base)return;drag=true;e.cv.setPointerCapture(ev.poin
 function maskText(t){const keys=$$('input[name="detect"]:checked').map(i=>i.value),counts={};for(const k of ['url','email','postcode','phone','number'])if(keys.includes(k)){let n=0;t=t.replace(rules[k].r,()=>{n++;return rules[k].l});counts[k]=n}return{t,counts}}
 e.mask.onclick=()=>{if(!e.src.value.trim())return toast('まず文章を入力してください。',true);snapshot=e.src.value;const x=maskText(e.src.value);e.out.value=x.t;const nm={email:'メール',phone:'電話番号',postcode:'郵便番号',url:'URL',number:'長い数字列'},parts=Object.entries(x.counts).filter(([,n])=>n).map(([k,n])=>`${nm[k]} ${n}件`),total=Object.values(x.counts).reduce((a,b)=>a+b,0);e.sum.innerHTML=total?`<strong>${total}件をマスクしました。</strong><span>${parts.join(' / ')}。人名・住所・会社名は必要に応じて手動編集してください。</span>`:'<strong>対象は見つかりませんでした。</strong><span>人名・住所・会社名などは手動で編集してください。</span>'};e.restore.onclick=()=>{if(!snapshot)return toast('戻せる元テキストがありません。',true);e.src.value=snapshot;e.out.value=''};
 e.copy.onclick=async()=>{const t=(e.out.value||e.src.value).trim();if(!t)return toast('コピーする文章がありません。',true);try{await navigator.clipboard.writeText(t);toast('✓ AI用テキストをコピーしました。')}catch{const x=e.out.value?e.out:e.src;x.focus();x.select();toast(document.execCommand('copy')?'✓ AI用テキストをコピーしました。':'コピーできませんでした。',true)}};
-function exportMaskedBlob(){return new Promise(resolve=>{if(!base)return resolve(null);if(draft&&draft.w>4&&draft.h>4){rects.push({x:draft.x,y:draft.y,w:draft.w,h:draft.h});draft=null;drag=false;draw()}const out=document.createElement('canvas');out.width=base.naturalWidth;out.height=base.naturalHeight;const ox=out.getContext('2d');ox.drawImage(base,0,0,out.width,out.height);const sx=out.width/e.cv.width,sy=out.height/e.cv.height;ox.fillStyle='#000';for(const r of rects)ox.fillRect(Math.round(r.x*sx),Math.round(r.y*sy),Math.ceil(r.w*sx),Math.ceil(r.h*sy));out.toBlob(resolve,'image/png')})}
-e.save.onclick=async()=>{if(!base)return;const b=await exportMaskedBlob();if(!b)return toast('画像の書き出しに失敗しました。',true);const f=new File([b],`mask-${new Date().toISOString().slice(0,10)}.png`,{type:'image/png'});try{if(navigator.canShare?.({files:[f]})&&navigator.share){await navigator.share({files:[f],title:'MASK 共有用画像'});toast('✓ 黒塗り済み画像を書き出しました。');return}}catch(x){if(x.name==='AbortError')return}const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);toast('✓ 黒塗り済み画像を書き出しました。')};
+function finalizeDraft(){
+  if(draft&&draft.w>4&&draft.h>4){
+    rects.push({x:draft.x,y:draft.y,w:draft.w,h:draft.h});
+    draft=null;drag=false;
+  }
+  draw(false);
+}
+function canvasToBlob(canvas){
+  return new Promise(resolve=>{
+    try{
+      const url=canvas.toDataURL('image/png');
+      const parts=url.split(','),bin=atob(parts[1]),arr=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+      resolve(new Blob([arr],{type:'image/png'}));
+    }catch(err){console.error(err);resolve(null)}
+  });
+}
+async function buildExportPreview(){
+  if(!base)return null;
+  finalizeDraft();
+
+  // Export exactly what is visible on the edit canvas.
+  // This avoids any coordinate mismatch between the preview and the saved file.
+  const out=document.createElement('canvas');
+  out.width=e.cv.width;
+  out.height=e.cv.height;
+  const ox=out.getContext('2d');
+  ox.drawImage(e.cv,0,0);
+
+  exportBlob=await canvasToBlob(out);
+  if(!exportBlob)return null;
+
+  const old=e.preview.dataset.url;
+  if(old)URL.revokeObjectURL(old);
+  const url=URL.createObjectURL(exportBlob);
+  e.preview.src=url;
+  e.preview.dataset.url=url;
+  e.previewWrap.classList.remove('is-hidden');
+  e.previewWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+  return exportBlob;
+}
+e.save.onclick=async()=>{
+  const b=await buildExportPreview();
+  if(!b)return toast('画像の書き出しに失敗しました。',true);
+  toast('保存プレビューを作成しました。黒塗りを確認してください。');
+};
+e.sharePreview.onclick=async()=>{
+  if(!exportBlob)return toast('先に保存プレビューを作成してください。',true);
+  const f=new File([exportBlob],`mask-${new Date().toISOString().slice(0,10)}.png`,{type:'image/png'});
+  try{
+    if(navigator.canShare?.({files:[f]})&&navigator.share){
+      await navigator.share({files:[f],title:'MASK 黒塗り済み画像'});
+      return;
+    }
+  }catch(x){
+    if(x.name==='AbortError')return;
+    console.error(x);
+  }
+  const u=URL.createObjectURL(exportBlob),a=document.createElement('a');
+  a.href=u;a.download=f.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),1500);
+};
 function makeOcrImage(){if(!base)return dataUrl;const maxSide=3200,scale=Math.min(1,maxSide/Math.max(base.naturalWidth,base.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(base.naturalWidth*scale));c.height=Math.max(1,Math.round(base.naturalHeight*scale));const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(base,0,0,c.width,c.height);const im=x.getImageData(0,0,c.width,c.height),d=im.data;let sum=0;for(let i=0;i<d.length;i+=4)sum+=(d[i]*.299+d[i+1]*.587+d[i+2]*.114);const mean=sum/(d.length/4),invert=mean<105;for(let i=0;i<d.length;i+=4){let v=d[i]*.299+d[i+1]*.587+d[i+2]*.114;if(invert)v=255-v;v=Math.max(0,Math.min(255,(v-128)*1.45+128));d[i]=d[i+1]=d[i+2]=v}x.putImageData(im,0,0);return c.toDataURL('image/png')}
 e.ocr.onclick=async()=>{if(!base||!dataUrl)return;if(!ready)return toast('先にオフライン準備を完了してください。',true);e.ocr.disabled=true;try{e.ocrSt.textContent='OCR用に画像を補正しています…';const input=makeOcrImage();const w=await getWorker(m=>{if(m?.status)e.ocrSt.textContent=`高精度OCR処理中… ${typeof m.progress==='number'?Math.round(m.progress*100)+'%':''}`});const r=await w.recognize(input),t=r?.data?.text?.trim()||'',conf=Math.round(r?.data?.confidence||0);e.src.value=t;snapshot=t;e.ocrSt.textContent=t?`✓ 文字を読み取りました（認識信頼度 ${conf}%）`:'文字を検出できませんでした。'}catch(x){console.error(x);worker=null;e.ocrSt.textContent='OCRに失敗しました。オフライン準備をやり直してください。'}finally{e.ocr.disabled=!ready}};
 mode('image');setReady(false);initSW();
