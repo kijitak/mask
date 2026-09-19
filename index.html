@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="MASK" />
-  <title>MASK v0.3 Offline — AIに渡す、その前に。</title>
+  <title>MASK v0.3.1 Offline — AIに渡す、その前に。</title>
   <meta name="description" content="スクショや文章から見せたくない情報を隠す、オフライン対応のローカル処理ツール。" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="style.css" />
@@ -18,7 +18,7 @@
       <div class="brand-row">
         <div class="brand-mark" aria-hidden="true">M</div>
         <div>
-          <p class="eyebrow">MASK v0.3 OFFLINE</p>
+          <p class="eyebrow">MASK v0.3.1 OFFLINE</p>
           <h1>AIに渡す、その前に。</h1>
         </div>
       </div>
@@ -125,10 +125,16 @@
         <button id="saveImageBtn" class="output-btn" type="button" disabled><span class="output-icon" aria-hidden="true">▣</span><span><strong>共有用画像を保存</strong><small>黒塗り済みPNG</small></span></button>
         <button id="copyTextBtn" class="output-btn" type="button"><span class="output-icon" aria-hidden="true">Aa</span><span><strong>AI用テキストをコピー</strong><small>マスク済み文章</small></span></button>
       </div>
+      <div id="exportPreviewWrap" class="export-preview is-hidden">
+        <p class="field-label">保存される画像のプレビュー</p>
+        <img id="exportPreview" alt="黒塗り済み画像の保存プレビュー" />
+        <button id="sharePreviewBtn" class="btn btn-primary" type="button">この画像を共有・保存</button>
+        <p class="muted">ここに黒塗りが見えていれば、書き出し画像にも反映されています。</p>
+      </div>
       <div id="toast" class="toast" aria-live="polite"></div>
     </section>
 
-    <footer><span>MASK v0.3 Offline</span><span>Local-first masking tool</span></footer>
+    <footer><span>MASK v0.3.1 Offline</span><span>Local-first masking tool</span></footer>
   </main>
   <script src="app.js"></script>
 </body>
