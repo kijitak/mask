@@ -266,11 +266,10 @@ function makeLayoutCells(line,imageWidth){
   const widths=items.map(w=>Math.max(1,w.bbox.x1-w.bbox.x0));
   const h=median(heights)||12;
   const charWidth=median(widths.map((w,i)=>w/Math.max(1,String(items[i].text||'').length)))||h*.65;
-  const gaps=[];
-  for(let i=1;i<items.length;i++)gaps.push(Math.max(0,items[i].bbox.x0-items[i-1].bbox.x1));
-  const positiveGaps=gaps.filter(g=>g>1);
-  const typicalGap=median(positiveGaps)||charWidth*.45;
-  const gapThreshold=Math.max(h*.72,charWidth*1.8,typicalGap*2.4,imageWidth*.009);
+  // Column gaps are intentionally much larger than ordinary OCR token gaps.
+  // Do not derive the threshold from the median gap: on sparse tables the
+  // median itself can be a column gap and would collapse the whole row.
+  const gapThreshold=Math.max(h*.78,charWidth*1.9,imageWidth*.007);
   const cells=[];
   let current=[items[0]];
   for(let i=1;i<items.length;i++){
