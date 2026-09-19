@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="MASK" />
-  <title>MASK v0.3.1 Offline — AIに渡す、その前に。</title>
+  <title>MASK v0.4 Offline — AIに渡す、その前に。</title>
   <meta name="description" content="スクショや文章から見せたくない情報を隠す、オフライン対応のローカル処理ツール。" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="style.css" />
@@ -18,7 +18,7 @@
       <div class="brand-row">
         <div class="brand-mark" aria-hidden="true">M</div>
         <div>
-          <p class="eyebrow">MASK v0.3.1 OFFLINE</p>
+          <p class="eyebrow">MASK v0.4 OFFLINE</p>
           <h1>AIに渡す、その前に。</h1>
         </div>
       </div>
@@ -78,16 +78,30 @@
       </label>
 
       <div id="imageWorkspace" class="workspace is-hidden">
-        <div class="canvas-wrap"><canvas id="imageCanvas" aria-label="画像プレビュー。ドラッグすると黒塗り矩形を追加できます。"></canvas></div>
+        <div class="image-toolbar">
+          <div class="edit-modes" aria-label="画像編集モード">
+            <button id="drawModeBtn" class="mini-btn is-active" type="button">黒塗り</button>
+            <button id="selectModeBtn" class="mini-btn" type="button">移動・選択</button>
+          </div>
+          <div class="zoom-tools" aria-label="画像ズーム">
+            <span>ズーム</span>
+            <button class="zoom-btn is-active" type="button" data-zoom="100">100%</button>
+            <button class="zoom-btn" type="button" data-zoom="150">150%</button>
+            <button class="zoom-btn" type="button" data-zoom="200">200%</button>
+            <button class="zoom-btn" type="button" data-zoom="300">300%</button>
+          </div>
+        </div>
+        <div id="canvasWrap" class="canvas-wrap is-draw"><canvas id="imageCanvas" aria-label="画像プレビュー。黒塗りモードではドラッグで追加、移動・選択モードではスクロールとマスク選択ができます。"></canvas></div>
         <div class="tool-row">
-          <div class="tool-note">画像上をドラッグして黒塗りします。</div>
+          <div id="toolNote" class="tool-note">画像上をドラッグして黒塗りします。</div>
           <div class="tool-actions">
+            <button id="deleteMaskBtn" class="btn btn-danger" type="button" disabled>選択を削除</button>
             <button id="undoMaskBtn" class="btn btn-secondary" type="button">1つ戻す</button>
             <button id="clearMaskBtn" class="btn btn-ghost" type="button">全解除</button>
           </div>
         </div>
         <div class="ocr-card">
-          <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">日本語＋英数字を高精度モデルで端末上OCRします。読み取り後は自由に修正できます。</p></div>
+          <div><p class="step">STEP 2</p><h2>文字を読み取る</h2><p class="muted">日本語＋英数字を高精度モデルで端末上OCRします。電話・メール・郵便番号・URL等を検出すると、画像側にも自動で黒塗りします。</p></div>
           <button id="ocrBtn" class="btn btn-primary" type="button" disabled>OCRを実行</button>
         </div>
         <div id="ocrStatus" class="status-line" aria-live="polite">OCRを使うには、最初にオフライン準備を完了してください。</div>
@@ -134,7 +148,7 @@
       <div id="toast" class="toast" aria-live="polite"></div>
     </section>
 
-    <footer><span>MASK v0.3.1 Offline</span><span>Local-first masking tool</span></footer>
+    <footer><span>MASK v0.4 Offline</span><span>Local-first masking tool</span></footer>
   </main>
   <script src="app.js"></script>
 </body>
