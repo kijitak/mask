@@ -1,7 +1,7 @@
 'use strict';
 
-const SHELL_CACHE = 'mask-shell-v0.2.0';
-const OCR_CACHE = 'mask-ocr-v5.0.0-fast';
+const SHELL_CACHE = 'mask-shell-v0.3.0';
+const OCR_CACHE = 'mask-ocr-v5.0.0-best';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest'
 ];
@@ -19,8 +19,8 @@ const OCR_ASSETS = [
   ['./offline/core/tesseract-core-lstm.wasm', 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.0.0/tesseract-core-lstm.wasm'],
   ['./offline/core/tesseract-core-simd-lstm.wasm.js', 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.0.0/tesseract-core-simd-lstm.wasm.js'],
   ['./offline/core/tesseract-core-simd-lstm.wasm', 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.0.0/tesseract-core-simd-lstm.wasm'],
-  ['./offline/lang/jpn.traineddata.gz', 'https://tessdata.projectnaptha.com/4.0.0_fast/jpn.traineddata.gz'],
-  ['./offline/lang/eng.traineddata.gz', 'https://tessdata.projectnaptha.com/4.0.0_fast/eng.traineddata.gz']
+  ['./offline/lang/jpn.traineddata.gz', 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_best/jpn.traineddata.gz'],
+  ['./offline/lang/eng.traineddata.gz', 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_best/eng.traineddata.gz']
 ];
 
 self.addEventListener('install', event => {
